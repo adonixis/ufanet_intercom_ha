@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import logging
-
 import async_timeout
-from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.camera import Camera, CameraEntityFeature, StreamType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import CameraInfo, UfanetApiAuthError, UfanetApiClient, UfanetApiError
+from .api import CameraInfo, UfanetApiClient, UfanetApiAuthError, UfanetApiError
 from .const import CONF_CONTRACT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,11 +23,11 @@ async def async_setup_entry(
     """Set up cameras."""
     data = hass.data[DOMAIN][entry.entry_id]
     session = async_get_clientsession(hass)
-
+    
     # Create callback to save token updates
     store = data.get("_store")
     contract = data.get("_contract")
-
+    
     async def save_token(token: str, exp: int) -> None:
         if store and contract:
             stored_data = await store.async_load() or {}
@@ -37,14 +36,14 @@ async def async_setup_entry(
             stored_data[contract]["refresh_token"] = token
             stored_data[contract]["refresh_exp"] = exp
             await store.async_save(stored_data)
-
+    
     # Try to get password from secure storage for re-authentication if needed
     password = None
     if store and contract:
         stored_data = await store.async_load() or {}
         credentials = stored_data.get(contract, {})
         password = credentials.get("password")
-
+    
     client = UfanetApiClient(
         session,
         data[CONF_CONTRACT],
@@ -55,9 +54,7 @@ async def async_setup_entry(
 
     try:
         cameras = await client.async_get_cameras(on_token_update=save_token)
-        _LOGGER.debug(
-            "Successfully loaded %d cameras for contract %s", len(cameras), contract
-        )
+        _LOGGER.debug("Successfully loaded %d cameras for contract %s", len(cameras), contract)
     except UfanetApiAuthError as err:
         _LOGGER.error(
             "Authentication failed while loading cameras for contract %s: %s. "
@@ -88,9 +85,7 @@ async def async_setup_entry(
     # Create camera entity for each camera in the list, sharing a single API client
     entities = [UfanetCamera(entry, cam, hass, client) for cam in cameras]
     async_add_entities(entities, update_before_add=True)
-    _LOGGER.info(
-        "Successfully set up %d cameras for contract %s", len(entities), contract
-    )
+    _LOGGER.info("Successfully set up %d cameras for contract %s", len(entities), contract)
 
 
 class UfanetCamera(Camera):
@@ -117,7 +112,7 @@ class UfanetCamera(Camera):
             name=entry.data.get(CONF_CONTRACT),
             manufacturer="Ufanet",
         )
-
+        
     def _update_urls(self) -> None:
         """Update stream and screenshot URLs based on current camera info."""
         self._stream_url = (
@@ -169,7 +164,6 @@ class UfanetCamera(Camera):
                 self._attr_name,
                 self._cam.number,
             )
-
     @property
     def unique_id(self):
         """Return a unique ID."""
@@ -178,7 +172,7 @@ class UfanetCamera(Camera):
     @property
     def name(self):
         """Return the name of this camera."""
-        return self._attr_name
+        return self._attr_name 
 
     @property
     def supported_features(self):
@@ -212,3 +206,5 @@ class UfanetCamera(Camera):
                         return await resp.read()
         except Exception:
             return None
+
+

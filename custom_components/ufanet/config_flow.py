@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Dict, List
 
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
 from homeassistant.helpers.storage import Store
 
 from .api import UfanetApiAuthError, UfanetApiClient, UfanetApiError
@@ -25,9 +26,7 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step: ask for credentials and validate them."""
         errors: dict[str, str] = {}
 
@@ -42,13 +41,13 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             session = async_get_clientsession(self.hass)
             client = UfanetApiClient(session, contract, password=password)
-
+            
             # Store for saving token
             store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
             stored_data = await store.async_load() or {}
             refresh_token = None
             token_exp = None
-
+            
             async def save_token(token: str, exp: int) -> None:
                 nonlocal refresh_token, token_exp
                 refresh_token = token
@@ -60,7 +59,7 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Also save password for re-authentication if refresh token expires
                 stored_data[contract]["password"] = password
                 await store.async_save(stored_data)
-
+            
             try:
                 _LOGGER.debug("Requesting intercom list")
                 intercoms = await client.async_get_intercoms(on_token_update=save_token)
@@ -73,14 +72,11 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     intercoms_data = [
                         {
                             "id": intercom.id,
-                            "name": intercom.role_name
-                            or intercom.string_view
-                            or intercom.custom_name
-                            or f"Intercom {intercom.id}",
+                            "name": intercom.role_name or intercom.string_view or intercom.custom_name or f"Intercom {intercom.id}",
                         }
                         for intercom in intercoms
                     ]
-
+                    
                     # Create entry with contract and intercoms (no password/token in entry.data)
                     data = {
                         CONF_CONTRACT: contract,
@@ -95,9 +91,7 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
             except Exception as err:  # pragma: no cover - bubble to UI
                 _LOGGER.error("Error validating credentials", exc_info=True)
-                _LOGGER.error(
-                    "Exception type: %s, message: %s", type(err).__name__, str(err)
-                )
+                _LOGGER.error("Exception type: %s, message: %s", type(err).__name__, str(err))
 
                 # Extract error message - could be dict, list, or string
                 error_msg = str(err)
@@ -185,3 +179,6 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+
+

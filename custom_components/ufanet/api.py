@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import time
+import base64
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 import async_timeout
@@ -31,10 +31,10 @@ class IntercomInfo:
     """Intercom info subset used by the integration."""
 
     id: int
-    role_name: str | None = None
-    string_view: str | None = None
-    custom_name: str | None = None
-    address: str | None = None
+    role_name: Optional[str] = None
+    string_view: Optional[str] = None
+    custom_name: Optional[str] = None
+    address: Optional[str] = None
 
 
 @dataclass
@@ -42,11 +42,11 @@ class CameraInfo:
     """Camera info needed for streaming."""
 
     number: str
-    title: str | None
-    address: str | None
+    title: Optional[str]
+    address: Optional[str]
     domain: str
     token_l: str
-    screenshot_domain: str | None = None
+    screenshot_domain: Optional[str] = None
 
 
 class UfanetApiClient:
@@ -57,19 +57,19 @@ class UfanetApiClient:
         session: ClientSession,
         contract: str,
         *,
-        password: str | None = None,
-        refresh_token: str | None = None,
-        refresh_exp: int | None = None,
+        password: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        refresh_exp: Optional[int] = None,
     ) -> None:
         self._session = session
         self._contract = contract
         self._password = password
-        self._access_token: str | None = None
-        self._access_exp: int | None = None
-        self._refresh_token: str | None = refresh_token
-        self._refresh_exp: int | None = refresh_exp
+        self._access_token: Optional[str] = None
+        self._access_exp: Optional[int] = None
+        self._refresh_token: Optional[str] = refresh_token
+        self._refresh_exp: Optional[int] = refresh_exp
 
-    async def async_get_intercoms(self, on_token_update=None) -> list[IntercomInfo]:
+    async def async_get_intercoms(self, on_token_update=None) -> List[IntercomInfo]:
         """Authenticate (if needed) and get intercom list."""
         await self._ensure_access_token(on_token_update)
         try:
@@ -78,7 +78,7 @@ class UfanetApiClient:
             await self._login(on_token_update)
             data = await self._request("GET", "api/v0/skud/shared/")
 
-        intercoms: list[IntercomInfo] = []
+        intercoms: List[IntercomInfo] = []
         for item in data or []:
             intercoms.append(
                 IntercomInfo(
@@ -101,12 +101,13 @@ class UfanetApiClient:
             data = await self._request("GET", f"api/v0/skud/shared/{intercom_id}/open/")
         return bool(data and data.get("result"))
 
-    async def async_get_cameras(self, on_token_update=None) -> list[CameraInfo]:
+
+    async def async_get_cameras(self, on_token_update=None) -> List[CameraInfo]:
         """Get list of cameras with prepared stream info from dom API."""
         await self._ensure_access_token(on_token_update)
         data = await self._request("GET", "api/v1/cctv")
         _LOGGER.debug("Raw camera response type=%s", type(data).__name__)
-        cameras: list[CameraInfo] = []
+        cameras: List[CameraInfo] = []
         results = data if isinstance(data, list) else []
         _LOGGER.debug("Camera results count=%s", len(results))
         for item in results or []:
@@ -195,9 +196,7 @@ class UfanetApiClient:
             return
 
         # Try refresh token if present (even if exp unknown)
-        if self._refresh_token and (
-            self._refresh_exp is None or not self._is_expiring(self._refresh_exp)
-        ):
+        if self._refresh_token and (self._refresh_exp is None or not self._is_expiring(self._refresh_exp)):
             try:
                 await self._refresh_access_token(on_token_update)
                 return
@@ -216,7 +215,7 @@ class UfanetApiClient:
         )
 
     @staticmethod
-    def _extract_exp(token: str | None) -> int | None:
+    def _extract_exp(token: Optional[str]) -> Optional[int]:
         """Extract exp from JWT without verification."""
         if not token:
             return None
@@ -231,7 +230,7 @@ class UfanetApiClient:
             return None
 
     @staticmethod
-    def _is_expiring(exp: int | None, skew_seconds: int = 60) -> bool:
+    def _is_expiring(exp: Optional[int], skew_seconds: int = 60) -> bool:
         """Return True if token is close to expiration (or we don't know exp)."""
         if exp is None:
             return True
@@ -243,15 +242,15 @@ class UfanetApiClient:
         method: str,
         path: str,
         *,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
+        json: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
         include_token: bool = True,
         timeout: int = 30,
         base_url: str = BASE_URL,
-        extra_headers: dict[str, str] | None = None,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         """Perform HTTP request with optional JWT token."""
-        headers: dict[str, str] = {}
+        headers: Dict[str, str] = {}
         if include_token and self._access_token:
             headers["Authorization"] = f"JWT {self._access_token}"
         if extra_headers:
@@ -274,9 +273,7 @@ class UfanetApiClient:
                         ) as retry_resp:
                             retry_text = await retry_resp.text()
                             if retry_resp.status >= 400:
-                                raise UfanetApiError(
-                                    f"{retry_resp.status}: {retry_text}"
-                                )
+                                raise UfanetApiError(f"{retry_resp.status}: {retry_text}")
                             try:
                                 return await retry_resp.json(content_type=None)
                             except Exception:
@@ -291,3 +288,5 @@ class UfanetApiClient:
             if err.status == 401:
                 raise UfanetApiAuthError(str(err)) from err
             raise UfanetApiError(str(err)) from err
+
+
