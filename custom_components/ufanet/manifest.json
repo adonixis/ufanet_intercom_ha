@@ -5,10 +5,10 @@
     "@adonixis"
   ],
   "config_flow": true,
-  "version": "0.1.0",
   "documentation": "https://github.com/adonixis/ufanet_intercom_ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/adonixis/ufanet_intercom_ha/issues",
-  "loggers": ["custom_components.ufanet"]
+  "loggers": ["custom_components.ufanet"],
+  "version": "0.1.0"
 }
 
