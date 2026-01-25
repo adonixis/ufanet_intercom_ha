@@ -1,46 +1,164 @@
-# Notice
+# Ufanet Intercom для Home Assistant
 
-The component and platforms in this repository are not meant to be used by a
-user, but as a "blueprint" that custom component developers can build
-upon, to make more awesome stuff.
+Интеграция для управления домофонами Ufanet и просмотра видео с камер в Home Assistant.
 
-HAVE FUN! 😎
+## Возможности
 
-## Why?
+- 🔘 **Кнопки открытия домофона** — управление домофонами через кнопки в Home Assistant
+- 📹 **Камеры** — просмотр видео с камер домофонов в реальном времени
+- 🔐 **Безопасное хранение** — пароли и токены хранятся в защищенном хранилище Home Assistant
+- 🔄 **Автоматическое обновление токенов** — интеграция автоматически обновляет токены доступа
 
-This is simple, by having custom_components look (README + structure) the same
-it is easier for developers to help each other and for users to start using them.
+## Требования
 
-If you are a developer and you want to add things to this "blueprint" that you think more
-developers will have use for, please open a PR to add it :)
+- Home Assistant версии 2025.2.4 или выше
+- Аккаунт Ufanet с доступом к домофонам
+- Номер договора и пароль от личного кабинета Ufanet
 
-## What?
+## Установка
 
-This repository contains multiple files, here is a overview:
+### Через HACS (рекомендуется)
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`.github/ISSUE_TEMPLATE/*.yml` | Templates for the issue tracker | [Documentation](https://help.github.com/en/github/building-a-strong-community/configuring-issue-templates-for-your-repository)
-`custom_components/integration_blueprint/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`CONTRIBUTING.md` | Guidelines on how to contribute. | [Documentation](https://help.github.com/en/github/building-a-strong-community/setting-guidelines-for-repository-contributors)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements.txt` | Python packages used for development/lint/testing this integration. | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+1. Убедитесь, что [HACS](https://hacs.xyz/) установлен и настроен
+2. Перейдите в **HACS** → **Интеграции**
+3. Нажмите на три точки в правом верхнем углу → **Пользовательские репозитории**
+4. Добавьте репозиторий:
+   - **URL репозитория**: `https://github.com/adonixis/ufanet_intercom_ha`
+   - **Тип**: **Интеграция**
+5. Найдите **Ufanet Intercom** в HACS и установите
+6. Перезагрузите Home Assistant
 
-## How?
+### Ручная установка
 
-1. Create a new repository in GitHub, using this repository as a template by clicking the "Use this template" button in the GitHub UI.
-1. Open your new repository in Visual Studio Code devcontainer (Preferably with the "`Dev Containers: Clone Repository in Named Container Volume...`" option).
-1. Rename all instances of the `integration_blueprint` to `custom_components/<your_integration_domain>` (e.g. `custom_components/awesome_integration`).
-1. Rename all instances of the `Integration Blueprint` to `<Your Integration Name>` (e.g. `Awesome Integration`).
-1. Run the `scripts/develop` to start HA and test out your new integration.
+1. Скопируйте папку `custom_components/ufanet` в директорию `custom_components` вашего Home Assistant
+2. Перезагрузите Home Assistant
 
-## Next steps
+## Настройка
 
-These are some next steps you may want to look into:
-- Add tests to your integration, [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component) can help you get started.
-- Add brand images (logo/icon) to https://github.com/home-assistant/brands.
-- Create your first release.
-- Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).
-- Submit your integration to [HACS](https://hacs.xyz/docs/publish/start).
+1. Перейдите в **Настройки** → **Устройства и службы**
+2. Нажмите **Добавить интеграцию**
+3. Найдите и выберите **Ufanet Intercom**
+4. Введите:
+   - **Номер договора** — номер вашего договора с Ufanet
+   - **Пароль** — пароль от личного кабинета Ufanet
+5. Нажмите **Отправить**
+
+После успешной настройки интеграция автоматически:
+- Найдет все доступные домофоны
+- Создаст кнопки для открытия каждого домофона
+- Создаст камеры для просмотра видео (если доступны)
+
+## Использование
+
+### Кнопки открытия домофона
+
+После настройки для каждого домофона будет создана кнопка с именем домофона. Нажмите на кнопку, чтобы открыть дверь.
+
+Кнопки можно использовать в:
+- Автоматизациях
+- Сценариях
+- Панелях управления
+
+**Пример автоматизации:**
+
+```yaml
+automation:
+  - alias: "Открыть домофон при нажатии кнопки"
+    trigger:
+      - platform: state
+        entity_id: button.ufanet_12345_open_intercom_1
+        to: "pressed"
+    action:
+      - service: button.press
+        target:
+          entity_id: button.ufanet_12345_open_intercom_1
+```
+
+### Камеры
+
+Камеры автоматически появляются в Home Assistant и доступны для:
+- Просмотра в реальном времени
+- Использования в автоматизациях
+- Интеграции с другими компонентами
+
+**Пример использования в Lovelace:**
+
+```yaml
+type: picture-entity
+entity: camera.ufanet_12345_camera_1
+camera_image: camera.ufanet_12345_camera_1
+```
+
+## Безопасность
+
+- Пароли и токены хранятся в защищенном хранилище Home Assistant
+- Токены автоматически обновляются при необходимости
+- Данные не передаются третьим лицам
+
+## Устранение неполадок
+
+### Ошибка аутентификации
+
+Если появляется ошибка "Invalid login or password":
+- Проверьте правильность номера договора и пароля
+- Убедитесь, что у вас есть доступ к домофонам в личном кабинете Ufanet
+
+### Камеры не отображаются
+
+- Убедитесь, что у вашего аккаунта есть доступ к камерам
+- Проверьте, что домофоны поддерживают видеонаблюдение
+- Перезагрузите интеграцию в настройках
+
+### Домофоны не найдены
+
+- Убедитесь, что у вашего аккаунта есть доступ к домофонам
+- Проверьте подключение к интернету
+- Попробуйте переустановить интеграцию
+
+## Разработка
+
+### Установка для разработки
+
+1. Клонируйте репозиторий:
+   ```bash
+   git clone https://github.com/adonixis/ufanet_intercom_ha.git
+   cd ufanet_intercom_ha
+   ```
+
+2. Установите зависимости:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Скопируйте `custom_components/ufanet` в `custom_components` вашего Home Assistant
+
+### Структура проекта
+
+```
+custom_components/ufanet/
+├── __init__.py          # Инициализация интеграции
+├── api.py               # API клиент для работы с Ufanet
+├── button.py            # Платформа кнопок
+├── camera.py            # Платформа камер
+├── config_flow.py       # Настройка через UI
+├── const.py             # Константы
+├── manifest.json        # Метаданные интеграции
+└── strings.json         # Локализация
+```
+
+## Поддержка
+
+- 📝 [Issues](https://github.com/adonixis/ufanet_intercom_ha/issues) — сообщить о проблеме
+- 💬 [Discussions](https://github.com/adonixis/ufanet_intercom_ha/discussions) — обсуждения и вопросы
+
+## Лицензия
+
+См. файл [LICENSE](LICENSE) для подробной информации.
+
+## Автор
+
+[@adonixis](https://github.com/adonixis)
+
+---
+
+**Примечание**: Эта интеграция не является официальным продуктом Ufanet и разработана независимо сообществом.
