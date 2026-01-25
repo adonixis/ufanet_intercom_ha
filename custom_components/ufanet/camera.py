@@ -59,7 +59,7 @@ async def async_setup_entry(
         cameras = []
     except UfanetApiError:
         cameras = []
-    except Exception:
+    except Exception:  # noqa: BLE001
         cameras = []
 
     if not cameras:
@@ -176,8 +176,7 @@ class UfanetCamera(Camera):
             async with async_timeout.timeout(10):  # noqa: SIM117
                 async with session.get(self._screenshot_url) as resp:
                     if resp.status == 200:  # noqa: PLR2004
-                        image_data = await resp.read()
-                        return image_data
+                        return await resp.read()
                     return None
         except Exception:  # noqa: BLE001
             return None

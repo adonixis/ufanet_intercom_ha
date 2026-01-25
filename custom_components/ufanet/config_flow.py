@@ -86,7 +86,7 @@ class UfanetIntercomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "auth"
             except UfanetApiError:  # other API errors
                 errors["base"] = "unknown"
-            except Exception as err:  # pragma: no cover - bubble to UI
+            except Exception as err:  # noqa: BLE001  # pragma: no cover - bubble to UI
                 # Extract error message - could be dict, list, or string
                 error_msg = str(err)
                 first_arg = err.args[0] if err.args else None
