@@ -59,21 +59,6 @@
 - Сценариях
 - Панелях управления
 
-**Пример автоматизации:**
-
-```yaml
-automation:
-  - alias: "Открыть домофон при нажатии кнопки"
-    trigger:
-      - platform: state
-        entity_id: button.ufanet_12345_open_intercom_1
-        to: "pressed"
-    action:
-      - service: button.press
-        target:
-          entity_id: button.ufanet_12345_open_intercom_1
-```
-
 ### Камеры
 
 Камеры автоматически появляются в Home Assistant и доступны для:
@@ -161,4 +146,5 @@ custom_components/ufanet/
 
 ---
 
-**Примечание**: Эта интеграция не является официальным продуктом Ufanet и разработана независимо сообществом.
+**Примечание**: Эта интеграция не является официальным продуктом Ufanet и разработана независимым разработчиокм.
+
