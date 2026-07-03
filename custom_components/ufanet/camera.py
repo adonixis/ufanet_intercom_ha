@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import async_timeout
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import create_token_save_callback, get_password_from_storage
 from .api import CameraInfo, UfanetApiAuthError, UfanetApiClient, UfanetApiError
 from .const import CONF_CONTRACT, DOMAIN
-
-if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 
 async def async_setup_entry(
@@ -28,22 +25,10 @@ async def async_setup_entry(
     # Create callback to save token updates
     store = data.get("_store")
     contract = data.get("_contract")
-
-    async def save_token(token: str, exp: int) -> None:
-        if store and contract:
-            stored_data = await store.async_load() or {}
-            if contract not in stored_data:
-                stored_data[contract] = {}
-            stored_data[contract]["refresh_token"] = token
-            stored_data[contract]["refresh_exp"] = exp
-            await store.async_save(stored_data)
+    save_token = create_token_save_callback(store, contract)
 
     # Try to get password from secure storage for re-authentication if needed
-    password = None
-    if store and contract:
-        stored_data = await store.async_load() or {}
-        credentials = stored_data.get(contract, {})
-        password = credentials.get("password")
+    password = await get_password_from_storage(store, contract)
 
     client = UfanetApiClient(
         session,
@@ -65,13 +50,14 @@ async def async_setup_entry(
     if not cameras:
         return
 
-    # Create camera entity for each camera in the list, sharing a single API client
     entities = [UfanetCamera(entry, cam, hass, client) for cam in cameras]
     async_add_entities(entities, update_before_add=True)
 
 
 class UfanetCamera(Camera):
     """Camera entity for Ufanet streams."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -87,9 +73,12 @@ class UfanetCamera(Camera):
         self._hass = hass
         self._client = client
         self._token_exp: int | None = UfanetApiClient.extract_exp(cam.token_l)
-        self._attr_unique_id = f"{entry.entry_id}_{cam.number}"
+        self._contract = entry.data[CONF_CONTRACT]
+        self._attr_unique_id = f"{self._contract}_{cam.number}"
+        self.internal_integration_suggested_object_id = (
+            f"{self._contract}_{cam.number}"
+        )
         self._attr_name = cam.title or cam.address or cam.number
-        # Initialize URLs
         self._stream_url = ""
         self._screenshot_url: str | None = None
         self._update_urls()
@@ -114,7 +103,6 @@ class UfanetCamera(Camera):
 
     async def _refresh_camera_token_if_needed(self) -> None:
         """Refresh camera token_l if it is close to expiration."""
-        # If we know exp and it is not expiring soon, do nothing
         if self._token_exp is not None and not UfanetApiClient.is_expiring(
             self._token_exp
         ):
@@ -123,10 +111,8 @@ class UfanetCamera(Camera):
         try:
             cameras = await self._client.async_get_cameras()
         except UfanetApiAuthError:
-            # If refresh fails, keep using existing URLs
             return
         except Exception:  # noqa: BLE001
-            # If refresh fails, keep using existing URLs
             return
 
         for cam in cameras:
@@ -135,16 +121,6 @@ class UfanetCamera(Camera):
                 self._token_exp = UfanetApiClient.extract_exp(cam.token_l)
                 self._update_urls()
                 break
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return self._attr_unique_id
-
-    @property
-    def name(self) -> str:
-        """Return the name of this camera."""
-        return self._attr_name
 
     @property
     def supported_features(self) -> CameraEntityFeature:
