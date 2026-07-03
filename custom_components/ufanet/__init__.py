@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
@@ -17,6 +18,55 @@ STORAGE_KEY = f"{DOMAIN}_credentials"
 STORAGE_VERSION = 1
 
 PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.CAMERA]
+
+
+def create_token_save_callback(
+    store: Store | None, contract: str | None
+) -> Callable[[str, int], Awaitable[None]] | None:
+    """
+    Create a callback function to save tokens to secure storage.
+
+    Args:
+        store: Store instance for secure storage
+        contract: Contract number
+
+    Returns:
+        Callback function or None if store/contract not available
+
+    """
+    if not store or not contract:
+        return None
+
+    async def save_token(token: str, exp: int) -> None:
+        stored_data = await store.async_load() or {}
+        if contract not in stored_data:
+            stored_data[contract] = {}
+        stored_data[contract]["refresh_token"] = token
+        stored_data[contract]["refresh_exp"] = exp
+        await store.async_save(stored_data)
+
+    return save_token
+
+
+async def get_password_from_storage(
+    store: Store | None, contract: str | None
+) -> str | None:
+    """
+    Get password from secure storage.
+
+    Args:
+        store: Store instance for secure storage
+        contract: Contract number
+
+    Returns:
+        Password string or None if not found
+
+    """
+    if not store or not contract:
+        return None
+    stored_data = await store.async_load() or {}
+    credentials = stored_data.get(contract, {})
+    return credentials.get("password")
 
 
 async def async_setup(_hass: HomeAssistant, _config: dict) -> bool:

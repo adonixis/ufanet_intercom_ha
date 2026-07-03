@@ -14,6 +14,7 @@ import async_timeout
 from aiohttp import ClientResponseError, ClientSession
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Any
 
 BASE_URL = "https://dom.ufanet.ru/"
@@ -28,9 +29,6 @@ JWT_PARTS_COUNT = 3
 
 # Token expiration skew in seconds
 TOKEN_EXPIRATION_SKEW = 60
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 class UfanetApiError(Exception):
@@ -50,6 +48,16 @@ class IntercomInfo:
     string_view: str | None = None
     custom_name: str | None = None
     address: str | None = None
+
+
+def intercom_display_name(intercom: IntercomInfo) -> str:
+    """Return a display name for an intercom entity."""
+    return (
+        intercom.role_name
+        or intercom.string_view
+        or intercom.custom_name
+        or f"Intercom {intercom.id}"
+    )
 
 
 @dataclass
@@ -109,7 +117,11 @@ class UfanetApiClient:
         return [
             IntercomInfo(
                 id=item.get("id"),
-                role_name=item.get("role").get("name"),
+                role_name=(
+                    item.get("role", {}).get("name")
+                    if item.get("role")
+                    else None
+                ),
                 string_view=item.get("string_view"),
                 custom_name=item.get("custom_name"),
                 address=item.get("address"),
