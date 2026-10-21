@@ -11,8 +11,17 @@ ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
     "D203", # no-blank-line-before-class (incompatible with formatter)
     "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "D213", # multi-line-summary-second-line (conflicts with D212 intent)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "EM101", # exception string literals — noisy for HA raise patterns
+    "EM102", # exception f-string literals — noisy for HA raise patterns
+    "TRY003", # long exception messages outside class
+    "PLR0913", # too many arguments — API client constructors
+    "PLR2004", # magic values — config entry version numbers
+    "S105", # hardcoded password false-positives on CONF_* keys
+    "S101", # assert in config flow reauth guards
+    "TC003", # typing-only stdlib imports
 ]
 
 [lint.flake8-pytest-style]

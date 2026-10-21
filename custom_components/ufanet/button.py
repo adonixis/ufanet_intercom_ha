@@ -5,64 +5,41 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 
-from . import create_token_save_callback, get_password_from_storage
 from .api import (
     UfanetApiAuthError,
-    UfanetApiClient,
     UfanetApiError,
     intercom_display_name,
 )
-from .const import CONF_CONTRACT, DOMAIN
+from .const import DOMAIN
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+    from . import UfanetConfigEntry
+
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    _hass: HomeAssistant,
+    entry: UfanetConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up button entities for all intercoms."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    session = async_get_clientsession(hass)
+    intercoms = entry.runtime_data.intercoms
 
-    store = data.get("_store")
-    contract = data.get("_contract")
-    save_token = create_token_save_callback(store, contract)
-
-    password = await get_password_from_storage(store, contract)
-
-    client = UfanetApiClient(
-        session,
-        data[CONF_CONTRACT],
-        password=password,
-        refresh_token=data.get("refresh_token"),
-        refresh_exp=data.get("refresh_exp"),
+    async_add_entities(
+        [
+            UfanetOpenDoorButton(
+                entry,
+                intercom_id=intercom.id,
+                intercom_name=intercom_display_name(intercom),
+            )
+            for intercom in intercoms
+        ]
     )
-
-    try:
-        intercoms = await client.async_get_intercoms(on_token_update=save_token)
-    except UfanetApiAuthError:
-        intercoms = []
-    except UfanetApiError:
-        intercoms = []
-    except Exception:  # noqa: BLE001
-        intercoms = []
-
-    if not intercoms:
-        return
-
-    intercoms_data = [
-        {"id": intercom.id, "name": intercom_display_name(intercom)}
-        for intercom in intercoms
-    ]
-
-    buttons = [UfanetOpenDoorButton(entry, data, intercom) for intercom in intercoms_data]
-    async_add_entities(buttons, update_before_add=True)
 
 
 class UfanetOpenDoorButton(ButtonEntity):
@@ -70,46 +47,48 @@ class UfanetOpenDoorButton(ButtonEntity):
 
     _attr_has_entity_name = True
 
-    def __init__(self, entry: ConfigEntry, data: dict, intercom: dict) -> None:
+    def __init__(
+        self,
+        entry: UfanetConfigEntry,
+        *,
+        intercom_id: int,
+        intercom_name: str,
+    ) -> None:
         """Initialize the button entity."""
         self._entry = entry
-        self._contract = data[CONF_CONTRACT]
-        self._intercom_id = intercom["id"]
-        self._intercom_name = intercom["name"]
+        self._contract = entry.runtime_data.contract
+        self._intercom_id = intercom_id
 
         self.entity_description = ButtonEntityDescription(
-            key=f"open_intercom_{self._intercom_id}",
+            key=f"open_intercom_{intercom_id}",
             translation_key="open_intercom",
             icon="mdi:door",
         )
 
-        self._attr_unique_id = f"{self._contract}_{self._intercom_id}"
-        self.internal_integration_suggested_object_id = (
-            f"{self._contract}_{self._intercom_id}"
-        )
-        self._attr_name = self._intercom_name
+        self._attr_unique_id = f"{self._contract}_{intercom_id}"
+        self._attr_suggested_object_id = f"{self._contract}_{intercom_id}"
+        self._attr_name = intercom_name
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._contract)},
-            name=self._contract,
+            identifiers={(DOMAIN, f"{self._contract}_{intercom_id}")},
+            name=intercom_name,
             manufacturer="Ufanet",
+            model="Intercom",
+            via_device=(DOMAIN, self._contract),
         )
 
     async def async_press(self) -> None:
         """Handle the button press to open the intercom."""
-        data = self.hass.data[DOMAIN][self._entry.entry_id]
-        session = async_get_clientsession(self.hass)
+        client = self._entry.runtime_data.client
+        try:
+            opened = await client.async_open_intercom(self._intercom_id)
+        except UfanetApiAuthError as err:
+            self._entry.async_start_reauth(self.hass)
+            msg = "Authentication failed; please reauthenticate"
+            raise HomeAssistantError(msg) from err
+        except UfanetApiError as err:
+            msg = f"Failed to open intercom: {err}"
+            raise HomeAssistantError(msg) from err
 
-        store = data.get("_store")
-        contract = data.get("_contract")
-        save_token = create_token_save_callback(store, contract)
-
-        password = await get_password_from_storage(store, contract)
-
-        client = UfanetApiClient(
-            session,
-            self._contract,
-            password=password,
-            refresh_token=data.get("refresh_token"),
-            refresh_exp=data.get("refresh_exp"),
-        )
-        await client.async_open_intercom(self._intercom_id, on_token_update=save_token)
+        if not opened:
+            msg = "Intercom did not confirm open"
+            raise HomeAssistantError(msg)

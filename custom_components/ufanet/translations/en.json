@@ -3,20 +3,70 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up Ufanet Intercom",
+        "title": "Ufanet Intercom: sign-in method",
+        "menu_options": {
+          "password": "Contract number + password",
+          "phone": "Phone call (no password)"
+        }
+      },
+      "password": {
+        "title": "Sign in with contract",
+        "description": "Enter your Ufanet contract number and personal-cabinet password.",
         "data": {
           "contract": "Contract number",
+          "password": "Password",
+          "dom_url": "Ufanet dom URL"
+        }
+      },
+      "phone": {
+        "title": "Sign in by phone call",
+        "description": "For accounts without a password (connected via a management company). Enter the phone number tied to the account.",
+        "data": {
+          "phone": "Phone (+7…)",
+          "dom_url": "Ufanet dom URL"
+        }
+      },
+      "phone_confirm": {
+        "title": "Call to confirm",
+        "description": "From the phone tied to the account, call **{phone_to_call}** (free — hang up after the ring). Then press Confirm."
+      },
+      "phone_contract": {
+        "title": "Choose a contract",
+        "data": {
+          "contract_id": "Contract"
+        }
+      },
+      "reauth_password": {
+        "title": "Reauthenticate",
+        "description": "Session expired for contract **{contract}**. Enter the personal-cabinet password again.",
+        "data": {
           "password": "Password"
+        }
+      },
+      "reauth_phone": {
+        "title": "Reauthenticate by phone",
+        "description": "Session expired. Sign in again with a confirmation call.",
+        "data": {
+          "phone": "Phone (+7…)",
+          "dom_url": "Ufanet dom URL"
         }
       }
     },
     "abort": {
-      "already_configured": "Only one configuration instance is allowed."
+      "already_configured": "This contract is already configured.",
+      "phone_apply_failed": "Could not obtain tokens after the call. Try again.",
+      "no_intercoms": "No intercoms available for this account.",
+      "wrong_account": "The confirmed call belongs to a different contract.",
+      "unknown": "Unexpected error. Check logs.",
+      "reauth_successful": "Reauthentication successful."
     },
     "error": {
       "auth": "Invalid login or password.",
       "unknown": "Unexpected error. Check logs.",
-      "no_intercoms": "No intercoms available for this account."
+      "no_intercoms": "No intercoms available for this account.",
+      "phone_init_failed": "Could not start phone sign-in. Check the number and retry.",
+      "phone_call_failed": "Error confirming the call. Retry.",
+      "phone_call_not_detected": "Call not detected yet. Dial the number and continue."
     }
   },
   "entity": {
@@ -32,4 +82,3 @@
     }
   }
 }
-

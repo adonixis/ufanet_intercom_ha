@@ -2,56 +2,49 @@
 
 from __future__ import annotations
 
-import async_timeout
+import asyncio
+import logging
+from typing import TYPE_CHECKING
+
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import create_token_save_callback, get_password_from_storage
-from .api import CameraInfo, UfanetApiAuthError, UfanetApiClient, UfanetApiError
-from .const import CONF_CONTRACT, DOMAIN
+from .api import UfanetApiAuthError, UfanetApiError
+from .const import DOMAIN
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from . import UfanetConfigEntry
+    from .api import CameraInfo, UfanetApiClient
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: UfanetConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up cameras."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    session = async_get_clientsession(hass)
-
-    # Create callback to save token updates
-    store = data.get("_store")
-    contract = data.get("_contract")
-    save_token = create_token_save_callback(store, contract)
-
-    # Try to get password from secure storage for re-authentication if needed
-    password = await get_password_from_storage(store, contract)
-
-    client = UfanetApiClient(
-        session,
-        data[CONF_CONTRACT],
-        password=password,
-        refresh_token=data.get("refresh_token"),
-        refresh_exp=data.get("refresh_exp"),
-    )
+    client = entry.runtime_data.client
 
     try:
-        cameras = await client.async_get_cameras(on_token_update=save_token)
+        cameras = await client.async_get_cameras()
     except UfanetApiAuthError:
-        cameras = []
+        entry.async_start_reauth(hass)
+        return
     except UfanetApiError:
-        cameras = []
-    except Exception:  # noqa: BLE001
-        cameras = []
-
-    if not cameras:
+        _LOGGER.exception("Failed to load cameras")
         return
 
-    entities = [UfanetCamera(entry, cam, hass, client) for cam in cameras]
-    async_add_entities(entities, update_before_add=True)
+    if not cameras:
+        _LOGGER.debug("No cameras available for this account")
+        return
+
+    async_add_entities([UfanetCamera(entry, cam, client) for cam in cameras])
 
 
 class UfanetCamera(Camera):
@@ -61,31 +54,29 @@ class UfanetCamera(Camera):
 
     def __init__(
         self,
-        entry: ConfigEntry,
+        entry: UfanetConfigEntry,
         cam: CameraInfo,
-        hass: HomeAssistant,
         client: UfanetApiClient,
     ) -> None:
         """Initialize the camera entity."""
         super().__init__()
         self._entry = entry
         self._cam = cam
-        self._hass = hass
         self._client = client
-        self._token_exp: int | None = UfanetApiClient.extract_exp(cam.token_l)
-        self._contract = entry.data[CONF_CONTRACT]
+        self._token_exp: int | None = client.extract_exp(cam.token_l)
+        self._contract = entry.runtime_data.contract
         self._attr_unique_id = f"{self._contract}_{cam.number}"
-        self.internal_integration_suggested_object_id = (
-            f"{self._contract}_{cam.number}"
-        )
+        self._attr_suggested_object_id = f"{self._contract}_{cam.number}"
         self._attr_name = cam.title or cam.address or cam.number
         self._stream_url = ""
         self._screenshot_url: str | None = None
         self._update_urls()
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.data.get(CONF_CONTRACT))},
-            name=entry.data.get(CONF_CONTRACT),
+            identifiers={(DOMAIN, f"{self._contract}_cam_{cam.number}")},
+            name=self._attr_name,
             manufacturer="Ufanet",
+            model="Intercom camera",
+            via_device=(DOMAIN, self._contract),
         )
 
     def _update_urls(self) -> None:
@@ -103,7 +94,7 @@ class UfanetCamera(Camera):
 
     async def _refresh_camera_token_if_needed(self) -> None:
         """Refresh camera token_l if it is close to expiration."""
-        if self._token_exp is not None and not UfanetApiClient.is_expiring(
+        if self._token_exp is not None and not self._client.is_expiring(
             self._token_exp
         ):
             return
@@ -111,26 +102,36 @@ class UfanetCamera(Camera):
         try:
             cameras = await self._client.async_get_cameras()
         except UfanetApiAuthError:
+            _LOGGER.warning(
+                "Auth failed while refreshing camera token for %s",
+                self._cam.number,
+            )
+            self._entry.async_start_reauth(self.hass)
             return
-        except Exception:  # noqa: BLE001
+        except UfanetApiError as err:
+            _LOGGER.warning(
+                "Failed to refresh camera token for %s: %s",
+                self._cam.number,
+                err,
+            )
             return
 
         for cam in cameras:
             if cam.number == self._cam.number:
                 self._cam = cam
-                self._token_exp = UfanetApiClient.extract_exp(cam.token_l)
+                self._token_exp = self._client.extract_exp(cam.token_l)
                 self._update_urls()
-                break
+                return
+
+        _LOGGER.warning(
+            "Camera %s missing from API response during token refresh",
+            self._cam.number,
+        )
 
     @property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return CameraEntityFeature.STREAM
-
-    @property
-    def supports_stream(self) -> bool:
-        """Advertise stream support explicitly."""
-        return True
 
     async def stream_source(self) -> str | None:
         """Return the stream source."""
@@ -147,12 +148,22 @@ class UfanetCamera(Camera):
 
         if not self._screenshot_url:
             return None
-        session = async_get_clientsession(self._hass)
+        session = async_get_clientsession(self.hass)
         try:
-            async with async_timeout.timeout(10):  # noqa: SIM117
+            async with asyncio.timeout(10):
                 async with session.get(self._screenshot_url) as resp:
-                    if resp.status == 200:  # noqa: PLR2004
+                    if resp.status == 200:
                         return await resp.read()
+                    _LOGGER.debug(
+                        "Screenshot HTTP %s for camera %s",
+                        resp.status,
+                        self._cam.number,
+                    )
                     return None
         except Exception:  # noqa: BLE001
+            _LOGGER.debug(
+                "Screenshot fetch failed for camera %s",
+                self._cam.number,
+                exc_info=True,
+            )
             return None
